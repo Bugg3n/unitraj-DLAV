@@ -21,7 +21,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 # Install MetaDrive Simulator
-cd ~/  # Go to the folder you want to host these two repos.
+cd ~/ # Go to the folder you want to host these two repos.
 git clone https://github.com/metadriverse/metadrive.git
 cd metadrive
 pip install -e .
