@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 from motionnet.models.base_model.base_model import BaseModel
 from torch.optim.lr_scheduler import MultiStepLR
 from torch import optim
@@ -264,7 +265,29 @@ class PTR(BaseModel):
         :return: (T, B, N, H)
         '''
         ######################## Your code here ########################
-        pass
+        T, B, N, H = agents_emb.size()
+        # print(T) # 1
+        # print(B) # 61
+        # print(N) # 16
+        # print(H) # 128
+
+        # Apply positional encoding
+
+        agents_emb_reshaped = agents_emb.permute(2, 0, 1, 3).reshape(T, B * N, H)
+        encoded_agents_emb = self.pos_encoder(agents_emb_reshaped)
+
+        # Reshape agent_masks for attention operation
+        agent_masks_permuted = agent_masks.permute(0, 2, 1)  # Swap N and T
+        # print("New shape after permute (B, N, T):", agent_masks.shape) # torch.Size([61, 16, 21])
+
+
+        # Reshape to flatten batch and agents into one dimension, while keeping time steps intact
+        agent_masks_reshaped = agent_masks_permuted.reshape(B * N, T)  
+        # print("New shape after reshape ([B*N, T]):", agent_masks_reshaped.shape) #  torch.Size([976, 21])
+
+        agents_emb = layer(encoded_agents_emb, src_key_padding_mask=agent_masks_reshaped)
+
+        agents_emb = agents_emb.reshape(T, B, N, H)
         ################################################################
         return agents_emb
 
@@ -278,7 +301,20 @@ class PTR(BaseModel):
         :return: (T, B, N, H)
         '''
         ######################## Your code here ########################
-        pass
+        T, B, N, H = agents_emb.size()
+        attended_agents = torch.zeros_like(agents_emb)
+        # print(f"t: {T}")
+
+        step_emb = agents_emb[0]  # (B, N, H)
+        step_mask = agent_masks[:, 0, :].bool()  # Ensure it's a boolean mask
+
+        # Ensure MultiheadAttention is used correctly
+        attn_layer = nn.MultiheadAttention(embed_dim=H, num_heads=8)  # Configure appropriately
+        
+        step_emb = step_emb.transpose(0, 1)  # (N, B, H) for MultiheadAttention
+        attn_output, _ = attn_layer(step_emb, step_emb, step_emb, key_padding_mask=step_mask)
+        attended_agents[0] = attn_output.transpose(0, 1)  # Revert shape back to (B, N, H)
+        
         ################################################################
         return agents_emb
 
@@ -306,7 +342,14 @@ class PTR(BaseModel):
 
         ######################## Your code here ########################
         # Apply temporal attention layers and then the social attention layers on agents_emb, each for L_enc times.
-        pass
+        for i in range(self.L_enc):
+            returned_emb = self.temporal_attn_fn(agents_emb, opps_masks, self.temporal_attn_layers[i])
+            agents_emb = returned_emb
+
+            for t in range(agents_emb.size(0)):
+                returned_emb = self.social_attn_fn(agents_emb[t:t+1], opps_masks[:, t:t+1, :], self.social_attn_layers[i])
+                agents_emb[t] = returned_emb
+
         ################################################################
 
         ego_soctemp_emb = agents_emb[:, :, 0]  # take ego-agent encodings only.
