@@ -45,7 +45,7 @@ If you don't have a wandb account, you can create one [here](https://wandb.ai/si
 
 You can verify the installation of UniTraj via running the training script:
 ```bash
-python  
+python train.py method=ptr
 ```
 The incomplete PTR model will be trained on several samples of data available in `motionnet/data_samples`.
 
